@@ -1,0 +1,334 @@
+<html lang="ja"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ ui.PAGE_TITLE }} - {{ theme }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); }
+        .modal-enter { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    </style>
+</head>
+<body class="p-4 md:p-8 min-h-screen relative">
+    <div class="max-w-7xl mx-auto space-y-6" id="dashboard-content">
+        <header class="glass-panel rounded-xl shadow-sm p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <div class="flex items-center gap-2 text-indigo-600 mb-1">
+                    <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
+                    <span class="font-semibold text-sm tracking-wider uppercase">Executive IP Dashboard</span>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-900">{{ theme }}</h1>
+                <p class="text-sm text-gray-500 mt-1">
+                    {{ ui.DATE_LABEL }} <span id="analysis-date"></span> | 
+                    {{ ui.EXECUTOR_LABEL }} <span>{{ ui.EXECUTOR_NAME }}</span>
+                </p>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="saveAsHTML()" class="flex items-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-lg shadow transition-colors" id="btn-save-html">
+                    <i data-lucide="download" class="w-4 h-4"></i> {{ ui.BTN_SAVE_HTML }}
+                </button>
+                <span class="text-sm font-medium text-gray-700 ml-4">{{ ui.ALERT_LABEL }}</span>
+                <button id="toggle-watch" class="relative inline-flex h-6 w-11 items-center rounded-full bg-gray-300 transition-colors focus:outline-none">
+                    <span id="toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+                </button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 glass-panel rounded-xl shadow-sm p-6 border-l-4 border-emerald-500">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="p-2 bg-emerald-100 text-emerald-700 rounded-lg"><i data-lucide="check-circle" class="w-6 h-6"></i></div>
+                    <h2 class="text-xl font-bold text-gray-900">{{ ui.JUDGMENT_LABEL }} <span class="text-emerald-600" id="overall-judgment"></span></h2>
+                </div>
+                <p class="text-gray-700 leading-relaxed text-lg" id="executive-summary"></p>
+            </div>
+            <div class="glass-panel rounded-xl shadow-sm p-6 flex flex-col justify-center space-y-5">
+                <h3 class="font-semibold text-gray-800 border-b pb-2">{{ ui.INDICATOR_LABEL }}</h3>
+                <div>
+                    <div class="flex justify-between text-sm mb-1"><span class="text-gray-600 font-medium">{{ ui.HEAT_LABEL }}</span><span class="font-bold text-rose-600" id="val-heat"></span></div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5"><div id="bar-heat" class="bg-gradient-to-r from-rose-400 to-rose-600 h-2.5 rounded-full" style="width: 0%;"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-sm mb-1"><span class="text-gray-600 font-medium">{{ ui.WHITESPACE_LABEL }}</span><span class="font-bold text-blue-600" id="val-whitespace"></span></div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5"><div id="bar-whitespace" class="bg-gradient-to-r from-blue-400 to-blue-600 h-2.5 rounded-full" style="width: 0%;"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-sm mb-1"><span class="text-gray-600 font-medium">{{ ui.FTO_LABEL }}</span><span class="font-bold text-amber-500" id="val-fto"></span></div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5"><div id="bar-fto" class="bg-amber-400 h-2.5 rounded-full" style="width: 0%;"></div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="glass-panel rounded-xl shadow-sm p-6 flex flex-col">
+                <div class="flex items-center gap-2 mb-4 text-rose-600"><i data-lucide="graduation-cap" class="w-6 h-6"></i><h2 class="text-lg font-bold">{{ ui.ACADEMIC_TITLE }}</h2></div>
+                <div class="mb-5 flex-grow">
+                    <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">{{ ui.ACADEMIC_MAT }}</h3>
+                    <div class="flex flex-wrap gap-2 mb-4" id="buzzwords-container"></div>
+                    <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">{{ ui.ACADEMIC_TREND }}</h3>
+                    <div class="h-32 w-full mb-4"><canvas id="trendChart"></canvas></div>
+                </div>
+                <div class="flex gap-2 border-t pt-4 mt-auto">
+                    <button onclick="openModal('academic')" class="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 text-sm font-medium rounded-lg transition-colors"><i data-lucide="list" class="w-4 h-4"></i> {{ ui.BTN_ACAD_LIST }}</button>
+                    <button onclick="downloadCSV('academic')" class="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors"><i data-lucide="download" class="w-4 h-4"></i> {{ ui.BTN_ACAD_DL }}</button>
+                </div>
+            </div>
+
+            <div class="glass-panel rounded-xl shadow-sm p-6 flex flex-col">
+                <div class="flex items-center gap-2 mb-4 text-blue-600"><i data-lucide="building-2" class="w-6 h-6"></i><h2 class="text-lg font-bold">{{ ui.PATENT_TITLE }}</h2></div>
+                <div class="mb-5 flex-grow">
+                    <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">{{ ui.PATENT_DENS }}</h3>
+                    <div class="space-y-3 mb-4">
+                        <div onclick="openModal('red_ocean')" class="p-3 bg-red-50 rounded-lg border border-red-100 cursor-pointer hover:bg-red-100 transition-colors group">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-sm font-bold text-red-700">{{ ui.RO_LABEL }}</span>
+                                <div class="flex items-center gap-1"><span class="text-[10px] text-red-600 font-medium bg-white px-1.5 py-0.5 rounded border border-red-200 group-hover:bg-red-50">{{ ui.BTN_REASON }}</span><i data-lucide="alert-triangle" class="w-4 h-4 text-red-500"></i></div>
+                            </div>
+                            <p class="text-xs text-red-600" id="ro-short-desc"></p>
+                        </div>
+                        <div onclick="openModal('white_space')" class="p-3 bg-blue-50 rounded-lg border border-blue-100 cursor-pointer hover:bg-blue-100 transition-colors group">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-sm font-bold text-blue-700">{{ ui.WS_LABEL }}</span>
+                                <div class="flex items-center gap-1"><span class="text-[10px] text-blue-600 font-medium bg-white px-1.5 py-0.5 rounded border border-blue-200 group-hover:bg-blue-50">{{ ui.BTN_REASON }}</span><i data-lucide="target" class="w-4 h-4 text-blue-500"></i></div>
+                            </div>
+                            <p class="text-xs text-blue-600" id="ws-short-desc"></p>
+                        </div>
+                    </div>
+                    <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">{{ ui.PATENT_PLAYERS }}</h3>
+                    <ul class="space-y-2 mb-4" id="players-container"></ul>
+                </div>
+                <div class="flex gap-2 border-t pt-4 mt-auto">
+                    <button onclick="openModal('patent')" class="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-white border border-blue-200 hover:bg-blue-50 text-blue-700 text-sm font-medium rounded-lg transition-colors"><i data-lucide="list" class="w-4 h-4"></i> {{ ui.BTN_PAT_LIST }}</button>
+                    <button onclick="downloadCSV('patent')" class="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors"><i data-lucide="download" class="w-4 h-4"></i> {{ ui.BTN_PAT_DL }}</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-panel rounded-xl shadow-sm p-6">
+            <div class="flex items-center gap-2 mb-4 text-emerald-600">
+                <i data-lucide="pie-chart" class="w-6 h-6"></i><h2 class="text-lg font-bold">{{ ui.MARKET_TITLE }}</h2>
+            </div>
+            <div class="mb-5">
+                <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">{{ ui.MARKET_OVERVIEW }}</h3>
+                <p class="text-sm text-gray-700 leading-relaxed border-l-2 border-emerald-200 pl-3" id="market-overview"></p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm text-gray-600 bg-white rounded-lg shadow-sm border border-gray-100">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 border-b">{{ ui.TH_MKT_PLAYER }}</th>
+                            <th class="px-4 py-3 border-b">{{ ui.TH_MKT_SHARE }}</th>
+                            <th class="px-4 py-3 border-b">{{ ui.TH_MKT_REV }}</th>
+                            <th class="px-4 py-3 border-b w-1/3">{{ ui.TH_MKT_STR }}</th>
+                        </tr>
+                    </thead>
+                    <tbody id="market-tbody" class="divide-y divide-gray-200"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="glass-panel rounded-xl shadow-sm p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2 text-indigo-700"><i data-lucide="zap" class="w-6 h-6"></i><h2 class="text-lg font-bold">{{ ui.ACTION_TITLE }}</h2></div>
+                <button class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm" onclick="alert('{{ ui.JS_ALERT }}')">{{ ui.BTN_ACTION }}</button>
+            </div>
+            <div class="space-y-3" id="action-plans-container"></div>
+        </div>
+
+        <footer class="text-center pb-8 pt-2">
+            <div class="inline-flex items-center justify-center text-left gap-2 text-xs text-gray-500 bg-gray-200/80 px-4 py-2.5 rounded-lg border border-gray-300">
+                <i data-lucide="info" class="w-4 h-4 flex-shrink-0"></i>
+                <p>{{ ui.DISCLAIMER_TEXT | safe }}</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- モーダル -->
+    <div id="data-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col modal-enter">
+            <div class="flex justify-between items-center p-5 border-b">
+                <h3 id="modal-title" class="text-lg font-bold text-gray-900 flex items-center gap-2"></h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 transition-colors"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            <div id="modal-description" class="px-5 py-4 bg-indigo-50/50 border-b border-indigo-100 text-sm text-gray-800 leading-relaxed hidden"></div>
+            <div class="overflow-auto p-5 flex-grow bg-gray-50">
+                <table class="w-full text-left text-sm text-gray-600 bg-white rounded-lg shadow-sm">
+                    <thead id="modal-thead" class="text-xs text-gray-700 uppercase bg-gray-100 sticky top-0 shadow-sm"></thead>
+                    <tbody id="modal-tbody" class="divide-y divide-gray-200"></tbody>
+                </table>
+            </div>
+            <div class="p-4 border-t bg-white rounded-b-xl flex justify-end">
+                <button onclick="closeModal()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors">{{ ui.MODAL_CLOSE }}</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. バックエンドからのデータを安全なJSONブロックとして配置 -->
+    <script id="pipeline-data" type="application/json">
+        {{ json_data | safe }}
+    </script>
+    <script id="csv-data" type="application/json">
+        {{ csv_data | safe }}
+    </script>
+
+    <!-- 2. 実行用スクリプト -->
+    <script>
+        // DOMからテキストとしてJSONを取得し、パースする
+        const pipelineOutputJson = JSON.parse(document.getElementById('pipeline-data').textContent);
+        const fullCsvData = JSON.parse(document.getElementById('csv-data').textContent);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            document.getElementById('analysis-date').textContent = new Date().toLocaleDateString('ja-JP');
+            document.getElementById('overall-judgment').textContent = pipelineOutputJson.overall_judgment;
+            document.getElementById('executive-summary').textContent = pipelineOutputJson.executive_summary;
+            
+            document.getElementById('val-heat').textContent = pipelineOutputJson.metrics.academic_heat + '%';
+            document.getElementById('bar-heat').style.width = pipelineOutputJson.metrics.academic_heat + '%';
+            document.getElementById('val-whitespace').textContent = pipelineOutputJson.metrics.patent_whitespace + '%';
+            document.getElementById('bar-whitespace').style.width = pipelineOutputJson.metrics.patent_whitespace + '%';
+            document.getElementById('val-fto').textContent = pipelineOutputJson.metrics.fto_risk + '%';
+            document.getElementById('bar-fto').style.width = pipelineOutputJson.metrics.fto_risk + '%';
+
+            const buzzContainer = document.getElementById('buzzwords-container');
+            // 【修正】HTML保存時の重複を防止するため追加前に中身をクリア
+            buzzContainer.innerHTML = '';
+            const colors = ['bg-rose-50 text-rose-700 border-rose-100', 'bg-blue-50 text-blue-700 border-blue-100', 'bg-emerald-50 text-emerald-700 border-emerald-100'];
+            pipelineOutputJson.buzzwords.forEach((bw, i) => {
+                const span = document.createElement('span');
+                span.className = `px-3 py-1 rounded-full text-sm font-medium border ${colors[i % colors.length]}`;
+                span.textContent = bw;
+                buzzContainer.appendChild(span);
+            });
+
+            document.getElementById('ro-short-desc').textContent = pipelineOutputJson.landscape_short_desc.red_ocean;
+            document.getElementById('ws-short-desc').textContent = pipelineOutputJson.landscape_short_desc.white_space;
+
+            const playersContainer = document.getElementById('players-container');
+            // 【修正】HTML保存時の重複を防止
+            playersContainer.innerHTML = '';
+            pipelineOutputJson.key_players.forEach((player, i) => {
+                const li = document.createElement('li');
+                li.className = "flex justify-between items-center text-sm border-b pb-1";
+                const badgeColor = player.threat_level === 'High' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700';
+                li.innerHTML = `<span class="text-gray-700 font-medium">${player.name}</span><span class="text-xs px-2 py-0.5 rounded ${badgeColor}">${player.threat_level}</span>`;
+                playersContainer.appendChild(li);
+            });
+
+            document.getElementById('market-overview').textContent = pipelineOutputJson.market_insights.overview;
+            const marketTbody = document.getElementById('market-tbody');
+            // 【修正】HTML保存時の重複を防止
+            marketTbody.innerHTML = '';
+            pipelineOutputJson.market_insights.players.forEach(player => {
+                marketTbody.innerHTML += `<tr class="hover:bg-gray-50"><td class="px-4 py-3 font-medium text-gray-900">${player.name}</td><td class="px-4 py-3">${player.share}</td><td class="px-4 py-3">${player.revenue}</td><td class="px-4 py-3 text-xs text-gray-500">${player.strength}</td></tr>`;
+            });
+
+            const actionContainer = document.getElementById('action-plans-container');
+            // 【修正】HTML保存時の重複を防止
+            actionContainer.innerHTML = '';
+            pipelineOutputJson.action_plans.forEach(plan => {
+                const planEl = document.createElement('label');
+                planEl.className = "flex items-start gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:bg-indigo-50 hover:border-indigo-200";
+                planEl.innerHTML = `<div class="flex-shrink-0 mt-0.5"><input type="checkbox" class="w-5 h-5 text-indigo-600 rounded"></div><span class="text-sm text-gray-800 font-medium">${plan}</span>`;
+                actionContainer.appendChild(planEl);
+            });
+
+            // 既存のチャートがあれば破棄（重複描画防止）
+            if (window.myTrendChart) {
+                window.myTrendChart.destroy();
+            }
+            window.myTrendChart = new Chart(document.getElementById('trendChart').getContext('2d'), {
+                type: 'bar',
+                data: { labels: pipelineOutputJson.trend_labels, datasets: [{ data: pipelineOutputJson.trend_data, borderColor: '#e11d48', backgroundColor: 'rgba(225, 29, 72, 0.4)', borderWidth: 2, borderRadius: 4 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: true }, y: { display: true, ticks: { precision: 0 } } } }
+            });
+
+            document.getElementById('toggle-watch').addEventListener('click', function() {
+                this.classList.toggle('bg-gray-300'); this.classList.toggle('bg-indigo-600');
+                document.getElementById('toggle-dot').classList.toggle('translate-x-1'); document.getElementById('toggle-dot').classList.toggle('translate-x-6');
+            });
+        });
+
+        const modal = document.getElementById('data-modal');
+        function openModal(type) {
+            const mTitle = document.getElementById('modal-title');
+            const mDesc = document.getElementById('modal-description');
+            const mThead = document.getElementById('modal-thead');
+            const mTbody = document.getElementById('modal-tbody');
+            mThead.innerHTML = ''; mTbody.innerHTML = ''; mDesc.classList.add('hidden'); mDesc.innerHTML = '';
+            
+            if (type === 'academic') {
+                mTitle.innerHTML = `<i data-lucide="graduation-cap" class="w-5 h-5 text-rose-600"></i> {{ ui.TH_ACAD_MODAL }}`;
+                mThead.innerHTML = `<tr><th class="px-4 py-3">{{ ui.TH_ID }}</th><th class="px-4 py-3">{{ ui.TH_TITLE }}</th><th class="px-4 py-3 w-1/2">{{ ui.TH_SUMMARY }}</th><th class="px-4 py-3 text-center">{{ ui.TH_CIT }}</th></tr>`;
+                pipelineOutputJson.academic_list.forEach((item, idx) => { 
+                    mTbody.innerHTML += `<tr class="border-b"><td class="px-4 py-3 font-medium text-indigo-600"><span class="inline-block w-5 h-5 text-center leading-5 text-xs text-white bg-indigo-400 rounded-full mr-1">${idx+1}</span> ${item.id}</td><td class="px-4 py-3">${item.title}</td><td class="px-4 py-3 text-xs text-gray-500">${item.summary}</td><td class="px-4 py-3 text-center">${item.published}</td></tr>`; 
+                });
+            } else if (type === 'patent') {
+                mTitle.innerHTML = `<i data-lucide="building-2" class="w-5 h-5 text-blue-600"></i> {{ ui.TH_PAT_MODAL }}`;
+                mThead.innerHTML = `<tr><th class="px-4 py-3">{{ ui.TH_PUB }}</th><th class="px-4 py-3">{{ ui.TH_INV }}</th><th class="px-4 py-3">{{ ui.TH_APP }}</th><th class="px-4 py-3 w-2/5">{{ ui.TH_SUMMARY }}</th></tr>`;
+                pipelineOutputJson.patent_list.forEach((item, idx) => { 
+                    mTbody.innerHTML += `<tr class="border-b"><td class="px-4 py-3 font-medium text-indigo-600"><span class="inline-block w-5 h-5 text-center leading-5 text-xs text-white bg-indigo-400 rounded-full mr-1">${idx+1}</span> ${item.pub_num}</td><td class="px-4 py-3 text-xs font-medium">${item.title}</td><td class="px-4 py-3 text-xs">${item.applicant}</td><td class="px-4 py-3 text-xs text-gray-500">${item.summary}</td></tr>`; 
+                });
+            } else if (type === 'red_ocean' || type === 'white_space') {
+                const data = pipelineOutputJson.landscape_reasons[type];
+                const iconHtml = type === 'red_ocean' 
+                    ? `<i data-lucide="alert-triangle" class="w-5 h-5 text-red-600"></i>`
+                    : `<i data-lucide="target" class="w-5 h-5 text-blue-600"></i>`;
+                mTitle.innerHTML = `${iconHtml} ${data.title}`;
+                mDesc.innerHTML = data.description; mDesc.classList.remove('hidden');
+                mThead.innerHTML = `<tr><th class="px-4 py-3">{{ ui.TH_PUB }}</th><th class="px-4 py-3 w-1/2">{{ ui.TH_REP }}</th><th class="px-4 py-3">{{ ui.TH_APP }}</th></tr>`;
+                data.patents.forEach(item => { mTbody.innerHTML += `<tr class="border-b"><td class="px-4 py-3 text-indigo-600">${item.pub_num}</td><td class="px-4 py-3 text-sm">${item.title}</td><td class="px-4 py-3 text-sm">${item.applicant}</td></tr>`; });
+            }
+            lucide.createIcons(); modal.classList.remove('hidden');
+        }
+        function closeModal() { modal.classList.add('hidden'); }
+
+        function downloadCSV(type) {
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+            if (type === 'academic') {
+                csvContent += "{{ ui.CSV_ACAD_HEAD }}";
+                fullCsvData.academic_list.forEach(item => { 
+                    let summary = item.summary ? item.summary.replace(/"/g, '""') : '';
+                    csvContent += `"${item.id}","${item.title}","${item.author}","${summary}","${item.published}"\n`; 
+                });
+            } else if (type === 'patent') {
+                csvContent += "{{ ui.CSV_PAT_HEAD }}";
+                fullCsvData.patent_list.forEach(item => { 
+                    let summary = item.summary ? item.summary.replace(/"/g, '""') : '';
+                    csvContent += `"${item.pub_num}","${item.title}","${item.applicant}","${summary}","${item.status}"\n`; 
+                });
+            }
+            const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", type + "_list_full.csv");
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+
+        // ==========================================
+        // HTML保存機能 (クライアントサイド完結)
+        // ==========================================
+        function saveAsHTML() {
+            const htmlClone = document.documentElement.cloneNode(true);
+            const btn = htmlClone.querySelector('#btn-save-html');
+            if (btn) btn.remove();
+
+            const htmlContent = "<!DOCTYPE html>\n" + htmlClone.outerHTML;
+            const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            
+            const dateStr = new Date().toISOString().slice(0, 10);
+            link.href = url;
+            link.download = `IP_Dashboard_{{ theme }}_${dateStr}.html`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body></html>

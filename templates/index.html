@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知財ダッシュボード設定</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-gray-50 flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-lg border border-gray-100">
+        <div class="flex items-center gap-3 mb-6 text-indigo-700">
+            <i data-lucide="cpu" class="w-8 h-8"></i>
+            <h1 class="text-2xl font-bold">1-Pager Dash</h1>
+        </div>
+        
+        <p class="text-sm text-gray-500 mb-6">テーマを入力して、AIによる特許・論文・市場動向の自動統合分析を実行します。</p>
+
+        <form action="/analyze" method="post" class="space-y-5" onsubmit="document.getElementById('loading').classList.remove('hidden'); document.getElementById('submit-btn').disabled = true;">
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">技術テーマ</label>
+                <input type="text" name="theme" required placeholder="例: 準同型暗号によるプライバシー保護計算" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all">
+            </div>
+            
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">出力言語</label>
+                <select name="lang_code" class="w-full border border-gray-300 rounded-lg p-3 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <option value="ja">日本語</option>
+                    <option value="en">English</option>
+                </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">API母集団取得数</label>
+                    <input type="number" name="fetch_max" value="50" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">RAG抽出数 (TOP N)</label>
+                    <input type="number" name="retrieve_k" value="10" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+            </div>
+
+            <button id="submit-btn" type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition-colors shadow-md flex items-center justify-center gap-2 mt-4">
+                <i data-lucide="play" class="w-4 h-4"></i> 分析パイプラインを起動
+            </button>
+        </form>
+
+        <div id="loading" class="hidden mt-6 text-center">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-2"></div>
+            <p class="text-sm text-indigo-600 font-semibold animate-pulse">APIデータ収集・RAGベクトル検索・市場動向推論を実行中...</p>
+            <p class="text-xs text-gray-400 mt-1">※最大1〜2分程度かかる場合があります</p>
+        </div>
+    </div>
+    <script>lucide.createIcons();</script>
+</body>
+</html>

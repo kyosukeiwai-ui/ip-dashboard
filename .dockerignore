@@ -1,0 +1,27 @@
+# ローカル開発環境のディレクトリ・ファイルをGCPコンテナから除外する設定
+# これにより、ビルド速度が向上し、コンテナサイズが最小化され、セキュリティリスクが低減します。
+
+# Git & Docker
+.git
+.gitignore
+.dockerignore
+
+# 仮想環境 & エディタ設定（画像で確認できたディレクトリを明記）
+.venv/
+.vscode/
+
+# Pythonキャッシュ
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 環境変数ファイル（機密情報はソースコードに含めずGCP側で注入する）
+.env
+
+# Chroma Vector DB (ローカルに保存されている場合)
+chroma_db/
+
+# ローカルでのテストツールやドキュメントなど本番に不要なもの
+instruction.md
+EPO_search.py
