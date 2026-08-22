@@ -11,10 +11,14 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from typing import TypedDict, List, Dict, Any, Tuple, Optional
 
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, Form, Depends, HTTPException, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
+
+# --- OAuth 2.0 / Session Imports ---
+from starlette.middleware.sessions import SessionMiddleware
+from authlib.integrations.starlette_client import OAuth, OAuthError
 
 warnings.filterwarnings("ignore")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -33,7 +37,71 @@ app = FastAPI(title="Executive IP Dashboard API")
 templates = Jinja2Templates(directory="templates")
 
 # ==============================================================================
-# ヘルパー関数群
+# セキュリティ設定: OAuth 2.0 & Session Middleware
+# ==============================================================================
+# セッション暗号化キー（本番では環境変数から強固な文字列を読み込むことを推奨）
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET", "super-secret-session-key"))
+
+oauth = OAuth()
+oauth.register(
+    name='google',
+    client_id=os.getenv("GOOGLE_CLIENT_ID"),
+    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'},
+)
+
+# .envに定義された許可ドメインリスト（カンマ区切り）を取得
+ALLOWED_DOMAINS = os.getenv("ALLOWED_DOMAINS", "").split(",")
+
+async def get_current_user(request: Request):
+    """Cookieからユーザー情報を取得。未ログインなら/loginへリダイレクト。"""
+    user = request.session.get('user')
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            headers={"Location": "/login"}
+        )
+    return user
+
+# ==============================================================================
+# ルーティング: 認証フロー
+# ==============================================================================
+@app.get("/login")
+async def login(request: Request):
+    """Googleのログイン画面へ転送"""
+    redirect_uri = request.url_for('auth')
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@app.get("/auth")
+async def auth(request: Request):
+    """Googleでの認証完了後のコールバック処理"""
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        user = token.get('userinfo')
+    except OAuthError:
+        raise HTTPException(status_code=400, detail="認証に失敗しました")
+
+    # ドメイン検証
+    user_email = user.get("email", "")
+    domain = user_email.split("@")[-1] if "@" in user_email else ""
+    
+    if domain not in ALLOWED_DOMAINS:
+        raise HTTPException(status_code=403, detail=f"許可されていないドメインです: {domain}")
+
+    # 検証成功: セッション保存してトップへ
+    request.session['user'] = dict(user)
+    return RedirectResponse(url='/')
+
+@app.get("/logout")
+async def logout(request: Request):
+    """ログアウト処理"""
+    request.session.pop('user', None)
+    return RedirectResponse(url='/login')
+
+
+# ==============================================================================
+# ヘルパー関数群 (元のコードそのまま)
 # ==============================================================================
 def find_all_keys_in_json(obj: Any, target_key: str) -> List[Any]:
     results = []
@@ -189,7 +257,7 @@ def fetch_epo_documents(cql_query: str, max_results: int) -> Tuple[List[Document
         return [], [], 0
 
 # ==============================================================================
-# LangGraph 定義
+# LangGraph 定義 (元のコードそのまま)
 # ==============================================================================
 class AgentState(TypedDict):
     theme: str
@@ -390,7 +458,6 @@ def synthesis_node(state: AgentState):
     lang_instruction = "Japanese" if lang == "ja" else "English"
     llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", temperature=0.2).with_structured_output(FinalDashboardDataLLM)
     
-    # 【変更】LLMに対するシステムプロンプトの抜本的見直し（分量半減・ビジネス指針への転換）
     prompt = ChatPromptTemplate.from_messages([
         ("system", f"""あなたはCEOを補佐する経営戦略のプロフェッショナルAIです。検索結果と市場データを分析しJSONを生成してください。言語: **{lang_instruction}**。
         【重要要件】
@@ -479,14 +546,14 @@ workflow.add_edge("synthesis", END)
 langgraph_app = workflow.compile()
 
 # ==============================================================================
-# FastAPI エンドポイント
+# FastAPI エンドポイント (保護適用)
 # ==============================================================================
 UI_DICT = {
     "ja": {
         "PAGE_TITLE": "知財戦略エグゼクティブ・サマリー", "DATE_LABEL": "分析日:", 
         "EXECUTOR_LABEL": "実行者/著作権者:", "EXECUTOR_NAME": "Venture Support Japan LLC.",
         "ALERT_LABEL": "定点観測アラート", 
-        "JUDGMENT_LABEL": "経営層向けサマリー:", # 【変更】見出しラベルを変更
+        "JUDGMENT_LABEL": "経営層向けサマリー:",
         "INDICATOR_LABEL": "主要インジケーター",
         "HEAT_LABEL": "学術熱度", "WHITESPACE_LABEL": "特許ホワイトスペース度", "FTO_LABEL": "FTOリスク",
         "ACADEMIC_TITLE": "Academic Agent (学術)", "ACADEMIC_MAT": "▼ 注目キーワード", "ACADEMIC_TREND": "▼ 論文発表トレンド",
@@ -505,9 +572,11 @@ UI_DICT = {
     }
 }
 
+# 【重要】エンドポイントの引数に Depends(get_current_user) を追加し、保護を有効化しました
 @app.get("/", response_class=HTMLResponse)
-def read_root(request: Request):
-    return templates.TemplateResponse(request=request, name="index.html")
+def read_root(request: Request, user: dict = Depends(get_current_user)):
+    # テンプレートにユーザー情報を渡すことで、画面上に名前を表示することも可能になります
+    return templates.TemplateResponse(request=request, name="index.html", context={"user": user})
 
 @app.post("/analyze", response_class=HTMLResponse)
 def analyze_theme(
@@ -515,7 +584,8 @@ def analyze_theme(
     theme: str = Form(...),
     lang_code: str = Form("ja"),
     fetch_max: int = Form(30),
-    retrieve_k: int = Form(5)
+    retrieve_k: int = Form(5),
+    user: dict = Depends(get_current_user) # 【重要】POSTリクエストも保護
 ):
     if not os.getenv("GOOGLE_API_KEY"):
         return HTMLResponse("<h1>エラー: .envファイルに GOOGLE_API_KEY が設定されていません。</h1>", status_code=500)
@@ -543,7 +613,8 @@ def analyze_theme(
             "theme": theme,
             "json_data": json_data,
             "csv_data": csv_data,
-            "ui": ui_text
+            "ui": ui_text,
+            "user": user # ユーザー情報もコンテキストとして渡す
         })
         
     except Exception as e:

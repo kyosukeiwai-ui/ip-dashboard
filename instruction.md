@@ -11,3 +11,6 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 
 →コマンドのhttpから始まるIPアドレスをクリックしてブラウザ起動
+
+GCP URL
+https://executive-ip-dashboard-1025027372191.asia-northeast1.run.app
