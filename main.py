@@ -82,22 +82,24 @@ async def auth(request: Request):
     except OAuthError:
         raise HTTPException(status_code=400, detail="認証に失敗しました")
 
-    # ドメイン検証
+    # セキュリティ: ドメインの検証
     user_email = user.get("email", "")
     domain = user_email.split("@")[-1] if "@" in user_email else ""
     
+    # 🚨【デバッグ用ログ出力（監視カメラ）】🚨
+    print(f"[AUTH_DEBUG] ログイン試行: {user_email}")
+    print(f"[AUTH_DEBUG] 抽出されたドメイン: {domain}")
+    print(f"[AUTH_DEBUG] 環境変数 ALLOWED_DOMAINS の中身: {ALLOWED_DOMAINS}")
+    
     if domain not in ALLOWED_DOMAINS:
+        print(f"[AUTH_DEBUG] 🚫 アクセス拒否: {domain} は許可リストにありません。")
         raise HTTPException(status_code=403, detail=f"許可されていないドメインです: {domain}")
+
+    print(f"[AUTH_DEBUG] ✅ アクセス許可: {domain} は許可リストに存在します。")
 
     # 検証成功: セッション保存してトップへ
     request.session['user'] = dict(user)
     return RedirectResponse(url='/')
-
-@app.get("/logout")
-async def logout(request: Request):
-    """ログアウト処理"""
-    request.session.pop('user', None)
-    return RedirectResponse(url='/login')
 
 
 # ==============================================================================
