@@ -65,13 +65,14 @@ async def get_current_user(request: Request):
     return user
 
 # ==============================================================================
-# ルーティング: 認証フロー
+# ルーティング: 認証フロー (修正版)
 # ==============================================================================
 @app.get("/login")
 async def login(request: Request):
     """Googleのログイン画面へ転送"""
-    redirect_uri = request.url_for('auth')
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    # 【追加】強制的に https のスキームでリダイレクトURIを生成
+    redirect_uri = request.url_for('auth').replace(scheme="https")
+    return await oauth.google.authorize_redirect(request, str(redirect_uri))
 
 @app.get("/auth")
 async def auth(request: Request):
@@ -86,7 +87,7 @@ async def auth(request: Request):
     user_email = user.get("email", "")
     domain = user_email.split("@")[-1] if "@" in user_email else ""
     
-    # 🚨【デバッグ用ログ出力（監視カメラ）】🚨
+    # 🚨【デバッグ用ログ出力】
     print(f"[AUTH_DEBUG] ログイン試行: {user_email}")
     print(f"[AUTH_DEBUG] 抽出されたドメイン: {domain}")
     print(f"[AUTH_DEBUG] 環境変数 ALLOWED_DOMAINS の中身: {ALLOWED_DOMAINS}")
@@ -100,7 +101,6 @@ async def auth(request: Request):
     # 検証成功: セッション保存してトップへ
     request.session['user'] = dict(user)
     return RedirectResponse(url='/')
-
 
 # ==============================================================================
 # ヘルパー関数群 (元のコードそのまま)
