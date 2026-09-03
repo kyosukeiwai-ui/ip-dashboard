@@ -336,7 +336,7 @@ def academic_agent_node(state: AgentState):
     docs, csv_data = fetch_arxiv_documents(query.strip().replace(" ", "+"), state["fetch_max"])
     if not docs: return {"raw_academic_data": "No academic data found.", "top_academic_list": [], "full_academic_list": []}
         
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     vectorstore = Chroma.from_documents(documents=docs, embedding=embeddings, collection_name=f"arxiv_{uuid.uuid4().hex[:8]}")
     retrieved_docs = vectorstore.as_retriever(search_kwargs={"k": state["fetch_max"]}).invoke(state["theme"])
     
@@ -433,7 +433,7 @@ def patent_agent_node(state: AgentState):
     if not best_docs: 
         return {"raw_patent_data": "No patent data found.", "top_patent_list": [], "full_patent_list": []}
     
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     vectorstore = Chroma.from_documents(documents=best_docs, embedding=embeddings, collection_name=f"patent_{uuid.uuid4().hex[:8]}")
     retrieved_docs = vectorstore.as_retriever(search_kwargs={"k": state["fetch_max"]}).invoke(state["theme"])
     
