@@ -39,8 +39,19 @@ templates = Jinja2Templates(directory="templates")
 # ==============================================================================
 # セキュリティ設定: OAuth 2.0 & Session Middleware
 # ==============================================================================
-# セッション暗号化キー（本番では環境変数から強固な文字列を読み込むことを推奨）
-app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET", "super-secret-session-key"))
+# セッション暗号化キー（本番環境では設定必須）
+session_secret = os.getenv("SESSION_SECRET")
+if not session_secret:
+    if os.getenv("K_SERVICE"):  # Cloud Run 本番環境
+        raise RuntimeError("CRITICAL: 本番環境で SESSION_SECRET 環境変数が設定されていません。")
+    session_secret = "dev-insecure-key-local-only"
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=session_secret,
+    https_only=os.getenv("HTTPS_ONLY", "true").lower() == "true",
+    same_site="lax",
+)
 
 oauth = OAuth()
 oauth.register(
@@ -51,8 +62,9 @@ oauth.register(
     client_kwargs={'scope': 'openid email profile'},
 )
 
-# .envに定義された許可ドメインリスト（カンマ区切り）を取得
-ALLOWED_DOMAINS = os.getenv("ALLOWED_DOMAINS", "").split(",")
+# .env / Secret Manager に定義された許可ドメインリスト（カンマ区切り、@の有無や空白を正規化）
+raw_allowed = os.getenv("ALLOWED_DOMAINS", "")
+ALLOWED_DOMAINS = [d.strip().lstrip("@").lower() for d in raw_allowed.split(",") if d.strip().lstrip("@")]
 
 async def get_current_user(request: Request):
     """Cookieからユーザー情報を取得。未ログインなら/loginへリダイレクト。"""
@@ -65,12 +77,11 @@ async def get_current_user(request: Request):
     return user
 
 # ==============================================================================
-# ルーティング: 認証フロー (修正版)
+# ルーティング: 認証フロー (堅牢化版)
 # ==============================================================================
 @app.get("/login")
 async def login(request: Request):
     """Googleのログイン画面へ転送"""
-    # 【追加】強制的に https のスキームでリダイレクトURIを生成
     redirect_uri = request.url_for('auth').replace(scheme="https")
     return await oauth.google.authorize_redirect(request, str(redirect_uri))
 
@@ -83,20 +94,23 @@ async def auth(request: Request):
     except OAuthError:
         raise HTTPException(status_code=400, detail="認証に失敗しました")
 
+    if not user or not isinstance(user, dict):
+        raise HTTPException(status_code=400, detail="ユーザー情報を取得できませんでした")
+
     # セキュリティ: ドメインの検証
-    user_email = user.get("email", "")
+    user_email = user.get("email", "").strip().lower()
     domain = user_email.split("@")[-1] if "@" in user_email else ""
     
-    # 🚨【デバッグ用ログ出力】
-    print(f"[AUTH_DEBUG] ログイン試行: {user_email}")
-    print(f"[AUTH_DEBUG] 抽出されたドメイン: {domain}")
-    print(f"[AUTH_DEBUG] 環境変数 ALLOWED_DOMAINS の中身: {ALLOWED_DOMAINS}")
+    # ログ出力（個人情報はマスク）
+    masked_email = (user_email[:2] + "***@" + domain) if domain else "unknown"
+    print(f"[AUTH] ログイン試行: {masked_email}, ドメイン: {domain}")
     
-    if domain not in ALLOWED_DOMAINS:
-        print(f"[AUTH_DEBUG] 🚫 アクセス拒否: {domain} は許可リストにありません。")
+    # ドメインが空、または許可ドメインリストが未設定、またはリストに含まれない場合は拒否
+    if not domain or not ALLOWED_DOMAINS or domain not in ALLOWED_DOMAINS:
+        print(f"[AUTH] 🚫 アクセス拒否: {domain} は許可リストにありません。")
         raise HTTPException(status_code=403, detail=f"許可されていないドメインです: {domain}")
 
-    print(f"[AUTH_DEBUG] ✅ アクセス許可: {domain} は許可リストに存在します。")
+    print(f"[AUTH] ✅ アクセス許可: {domain} は許可リストに存在します。")
 
     # 検証成功: セッション保存してトップへ
     request.session['user'] = dict(user)
@@ -338,7 +352,11 @@ def academic_agent_node(state: AgentState):
         
     embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     vectorstore = Chroma.from_documents(documents=docs, embedding=embeddings, collection_name=f"arxiv_{uuid.uuid4().hex[:8]}")
-    retrieved_docs = vectorstore.as_retriever(search_kwargs={"k": state["fetch_max"]}).invoke(state["theme"])
+    retrieved_docs = vectorstore.as_retriever(search_kwargs={"k": state["retrieve_k"]}).invoke(state["theme"])
+    try:
+        vectorstore.delete_collection()
+    except Exception:
+        pass
     
     result_text = "\n\n".join([f"[Rank {i+1}] {d.page_content}" for i, d in enumerate(retrieved_docs)])
     top_list = [{"id": d.metadata.get("id", ""), "title": d.metadata.get("title", ""), "author": d.metadata.get("author", ""), "published": d.metadata.get("published", ""), "summary": str(d.metadata.get("summary", ""))[:150] + "..."} for d in retrieved_docs]
@@ -435,7 +453,11 @@ def patent_agent_node(state: AgentState):
     
     embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     vectorstore = Chroma.from_documents(documents=best_docs, embedding=embeddings, collection_name=f"patent_{uuid.uuid4().hex[:8]}")
-    retrieved_docs = vectorstore.as_retriever(search_kwargs={"k": state["fetch_max"]}).invoke(state["theme"])
+    retrieved_docs = vectorstore.as_retriever(search_kwargs={"k": state["retrieve_k"]}).invoke(state["theme"])
+    try:
+        vectorstore.delete_collection()
+    except Exception:
+        pass
     
     result_text = f"[EPO Total Hits: {best_count:,} patents found worldwide in this domain.]\n\n"
     result_text += "\n\n".join([f"[Rank {i+1}] {d.page_content}" for i, d in enumerate(retrieved_docs)])
@@ -571,13 +593,33 @@ UI_DICT = {
         "TH_ID": "ID", "TH_TITLE": "タイトル", "TH_SUMMARY": "概要", "TH_CIT": "発行年", "TH_PUB": "特許番号", "TH_INV": "発明の名称", "TH_APP": "出願人", "TH_REP": "代表特許",
         "JS_ALERT": "指示を送信しました。", "CSV_ACAD_HEAD": "ID,タイトル,著者,要約,発行年\\n", "CSV_PAT_HEAD": "特許番号,名称,出願人,要約,状況\\n",
         "DISCLAIMER_TEXT": "<strong>免責事項:</strong> 本ダッシュボードはAI（Gemini 3.1 Flash Lite）による初期仮説の提供を目的としています。最終的なFTO評価・出願判断は法務・知財部門の専門家と実施してください。"
+    },
+    "en": {
+        "PAGE_TITLE": "IP Strategy Executive Summary", "DATE_LABEL": "Analysis Date:", 
+        "EXECUTOR_LABEL": "Executor/Copyright:", "EXECUTOR_NAME": "Venture Support Japan LLC.",
+        "ALERT_LABEL": "Monitoring Alert", 
+        "JUDGMENT_LABEL": "Executive Summary:",
+        "INDICATOR_LABEL": "Key Indicators",
+        "HEAT_LABEL": "Academic Heat", "WHITESPACE_LABEL": "Patent Whitespace", "FTO_LABEL": "FTO Risk",
+        "ACADEMIC_TITLE": "Academic Agent", "ACADEMIC_MAT": "▼ Key Keywords", "ACADEMIC_TREND": "▼ Publication Trends",
+        "BTN_ACAD_LIST": "Show Paper List", "BTN_ACAD_DL": "Download Papers (All)",
+        "PATENT_TITLE": "Patent Agent", "PATENT_DENS": "▼ Landscape Density",
+        "RO_LABEL": "Red Ocean", "WS_LABEL": "White Space", "BTN_REASON": "View Evidence",
+        "PATENT_PLAYERS": "▼ Key Patent Applicants", "BTN_PAT_LIST": "Show Patent List", "BTN_PAT_DL": "Download Patents (All)",
+        "MARKET_TITLE": "Market Agent", "MARKET_OVERVIEW": "▼ Market Overview",
+        "TH_MKT_PLAYER": "Key Player", "TH_MKT_SHARE": "Est. Share", "TH_MKT_REV": "Revenue", "TH_MKT_STR": "Strengths",
+        "ACTION_TITLE": "Action Plans", "BTN_ACTION": "Execute All", "BTN_SAVE_HTML": "Save Dashboard (HTML)",
+        "MODAL_CLOSE": "Close",
+        "TH_ACAD_MODAL": "Extracted Papers (Top)", "TH_PAT_MODAL": "Related Patents (Top)",
+        "TH_ID": "ID", "TH_TITLE": "Title", "TH_SUMMARY": "Summary", "TH_CIT": "Year", "TH_PUB": "Patent No.", "TH_INV": "Invention Title", "TH_APP": "Applicant", "TH_REP": "Representative",
+        "JS_ALERT": "Instruction sent.", "CSV_ACAD_HEAD": "ID,Title,Author,Summary,Year\\n", "CSV_PAT_HEAD": "PatentNo,Title,Applicant,Summary,Status\\n",
+        "DISCLAIMER_TEXT": "<strong>Disclaimer:</strong> This dashboard is generated by AI (Gemini 3.1 Flash Lite) to provide initial hypotheses. Please consult legal/IP professionals for final FTO evaluations and filing decisions."
     }
 }
 
 # 【重要】エンドポイントの引数に Depends(get_current_user) を追加し、保護を有効化しました
 @app.get("/", response_class=HTMLResponse)
 def read_root(request: Request, user: dict = Depends(get_current_user)):
-    # テンプレートにユーザー情報を渡すことで、画面上に名前を表示することも可能になります
     return templates.TemplateResponse(request=request, name="index.html", context={"user": user})
 
 @app.post("/analyze", response_class=HTMLResponse)
@@ -585,12 +627,12 @@ def analyze_theme(
     request: Request,
     theme: str = Form(...),
     lang_code: str = Form("ja"),
-    fetch_max: int = Form(30),
-    retrieve_k: int = Form(5),
-    user: dict = Depends(get_current_user) # 【重要】POSTリクエストも保護
+    fetch_max: int = Form(30, ge=1, le=100),
+    retrieve_k: int = Form(5, ge=1, le=30),
+    user: dict = Depends(get_current_user)
 ):
     if not os.getenv("GOOGLE_API_KEY"):
-        return HTMLResponse("<h1>エラー: .envファイルに GOOGLE_API_KEY が設定されていません。</h1>", status_code=500)
+        return HTMLResponse("<h1>エラー: GOOGLE_API_KEY が設定されていません。</h1>", status_code=500)
 
     try:
         final_state = langgraph_app.invoke({
@@ -616,8 +658,12 @@ def analyze_theme(
             "json_data": json_data,
             "csv_data": csv_data,
             "ui": ui_text,
-            "user": user # ユーザー情報もコンテキストとして渡す
+            "user": user
         })
         
     except Exception as e:
-        return HTMLResponse(f"<h1>分析中にエラーが発生しました</h1><p>{str(e)}</p>", status_code=500)
+        print(f"[ERROR] 分析実行エラー: {e}")
+        return HTMLResponse(
+            "<h1>分析中にエラーが発生しました</h1><p>時間をおいて再度お試しいただくか、管理者へお問い合わせください。</p>",
+            status_code=500
+        )
