@@ -1,47 +1,41 @@
-# cloudbuild.yaml
-# 設計思想: Kanikoのメモリ枯渇(OOM)を回避するため、標準のDockerデーモンを利用します。
-# 事前に前回のイメージをPullして --cache-from に指定することで、
-# 重厚なMLライブラリのビルド時間を大幅に短縮する堅牢なCI/CDパイプラインです。
-
+# ==============================================================================
+# Cloud Build デプロイパイプライン
+# ==============================================================================
 steps:
-  # Step 1: レジストリから最新のイメージをPullしてキャッシュとして準備する
-  # (初回ビルド時など、イメージが存在しない場合はエラーになりますが「|| exit 0」で無視して安全に続行します)
-  - name: 'gcr.io/cloud-builders/docker'
-    entrypoint: 'bash'
-    args: 
-      - '-c'
-      - 'docker pull asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/executive-ip-dashboard:latest || exit 0'
-
-  # Step 2: キャッシュを利用してDockerイメージをビルドする (メモリではなくディスクを使用)
+  # 1. Docker イメージのビルドとタグ付け (専用リポジトリを使用)
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '-t'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/executive-ip-dashboard:latest'
-      - '--cache-from'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/executive-ip-dashboard:latest'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/ip-dashboard-repo/executive-ip-dashboard:$COMMIT_SHA'
+      - '-t'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/ip-dashboard-repo/executive-ip-dashboard:latest'
       - '.'
 
-  # Step 3: 完成したイメージをArtifact RegistryへPushする
+  # 2. Docker イメージのプッシュ
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/executive-ip-dashboard:latest'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/ip-dashboard-repo/executive-ip-dashboard'
+      - '--all-tags'
 
-  # Step 4: Cloud Runへ最新イメージをデプロイする
+  # 3. Cloud Run へのデプロイ
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
-      - run
-      - deploy
-      - executive-ip-dashboard
-      - --image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/executive-ip-dashboard:latest
-      - --region=asia-northeast1
-      - --allow-unauthenticated
-      - --memory=2Gi
-      - --cpu=1
-      - --timeout=300
-      - --set-secrets=GOOGLE_API_KEY=GOOGLE_API_KEY:latest,EPO_CONSUMER_KEY=EPO_CONSUMER_KEY:latest,EPO_CONSUMER_SECRET=EPO_CONSUMER_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,ALLOWED_DOMAINS=ALLOWED_DOMAINS:latest
+      - 'run'
+      - 'deploy'
+      - 'executive-ip-dashboard'
+      - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/ip-dashboard-repo/executive-ip-dashboard:latest'
+      - '--region=asia-northeast1'
+      - '--project=$PROJECT_ID'
+      - '--allow-unauthenticated'
+      - '--memory=2Gi'
+      - '--cpu=1'
+      - '--timeout=300'
+      # 環境変数・シークレットの注入
+      - '--set-secrets=GOOGLE_API_KEY=GOOGLE_API_KEY:latest,EPO_CONSUMER_KEY=EPO_CONSUMER_KEY:latest,EPO_CONSUMER_SECRET=EPO_CONSUMER_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,ALLOWED_DOMAINS=ALLOWED_DOMAINS:latest'
 
+# ビルドの監査・ロギング設定
 options:
   logging: CLOUD_LOGGING_ONLY
