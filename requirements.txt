@@ -12,9 +12,7 @@ langchain-core
 langchain-google-genai
 langchain-chroma
 chromadb
-langchain-huggingface
-sentence-transformers<3.0.0
-transformers<4.42.0
+
 langgraph
 pydantic
 numpy<2
