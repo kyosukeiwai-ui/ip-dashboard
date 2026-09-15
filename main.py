@@ -6,6 +6,7 @@ import base64
 import requests
 import warnings
 import datetime
+import time
 import urllib.parse
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -142,9 +143,40 @@ def extract_text_deeply(node: Any) -> str:
 
 def fetch_arxiv_documents(query: str, max_results: int) -> Tuple[List[Document], List[dict]]:
     print(f"[API] Arxiv へリクエスト... Query: '{query}'")
-    url = f"http://export.arxiv.org/api/query?search_query=all:{query}&start=0&max_results={max_results}"
+    url = "https://export.arxiv.org/api/query"
+    params = {
+        "search_query": f"all:{urllib.parse.unquote_plus(query).strip()}",
+        "start": 0,
+        "max_results": max_results,
+    }
+    headers = {
+        "User-Agent": (
+            "ip-dashboard/1.0 "
+            f"(mailto:{os.getenv('ARXIV_CONTACT_EMAIL', 'admin@example.com')})"
+        )
+    }
     try:
-        response = requests.get(url, timeout=15)
+        response = None
+        for attempt in range(3):
+            response = requests.get(url, params=params, headers=headers, timeout=15)
+            if response.status_code != 429 or attempt == 2:
+                break
+
+            retry_after = response.headers.get("Retry-After", "3")
+            try:
+                wait_seconds = max(1, min(int(retry_after), 30))
+            except ValueError:
+                wait_seconds = 3
+            print(
+                f"[API] Arxiv rate limit (429). "
+                f"{wait_seconds}秒後に再試行します ({attempt + 1}/2)",
+                flush=True,
+            )
+            time.sleep(wait_seconds)
+
+        if response is None:
+            raise RuntimeError("Arxiv APIからレスポンスを取得できませんでした")
+        response.raise_for_status()
         root = ET.fromstring(response.content)
         docs: List[Document] = []
         csv_data: List[dict] = []
@@ -175,7 +207,8 @@ def fetch_arxiv_documents(query: str, max_results: int) -> Tuple[List[Document],
             csv_data.append(metadata)
         return docs, csv_data
     except Exception as e:
-        print(f"Arxiv APIエラー: {e}")
+        status_code = getattr(response, "status_code", "N/A")
+        print(f"Arxiv APIエラー (status={status_code}): {e}", flush=True)
         return [], []
 
 def _extract_epo_data(doc: dict) -> dict:
