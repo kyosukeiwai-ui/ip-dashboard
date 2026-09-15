@@ -155,6 +155,9 @@
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col modal-enter">
             <div class="flex justify-between items-center p-5 border-b">
                 <h3 id="modal-title" class="text-lg font-bold text-gray-900 flex items-center gap-2"></h3>
+                <button id="modal-download" onclick="downloadCSV('academic', false)" class="hidden items-center gap-1 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-medium rounded-lg transition-colors">
+                    <i data-lucide="download" class="w-4 h-4"></i> {{ ui.BTN_TOP_DL }}
+                </button>
                 <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 transition-colors"><i data-lucide="x" class="w-6 h-6"></i></button>
             </div>
             <div id="modal-description" class="px-5 py-4 bg-indigo-50/50 border-b border-indigo-100 text-sm text-gray-800 leading-relaxed hidden"></div>
@@ -262,16 +265,25 @@
             const mDesc = document.getElementById('modal-description');
             const mThead = document.getElementById('modal-thead');
             const mTbody = document.getElementById('modal-tbody');
+            const mDownload = document.getElementById('modal-download');
             mThead.innerHTML = ''; mTbody.innerHTML = ''; mDesc.classList.add('hidden'); mDesc.innerHTML = '';
+            mDownload.classList.add('hidden');
+            mDownload.classList.remove('flex');
             
             if (type === 'academic') {
                 mTitle.innerHTML = `<i data-lucide="graduation-cap" class="w-5 h-5 text-rose-600"></i> {{ ui.TH_ACAD_MODAL }}`;
+                mDownload.onclick = () => downloadCSV('academic', false);
+                mDownload.classList.remove('hidden');
+                mDownload.classList.add('flex');
                 mThead.innerHTML = `<tr><th class="px-4 py-3">{{ ui.TH_ID }}</th><th class="px-4 py-3">{{ ui.TH_TITLE }}</th><th class="px-4 py-3 w-1/2">{{ ui.TH_SUMMARY }}</th><th class="px-4 py-3 text-center">{{ ui.TH_CIT }}</th></tr>`;
                 pipelineOutputJson.academic_list.forEach((item, idx) => { 
                     mTbody.innerHTML += `<tr class="border-b"><td class="px-4 py-3 font-medium text-indigo-600"><span class="inline-block w-5 h-5 text-center leading-5 text-xs text-white bg-indigo-400 rounded-full mr-1">${idx+1}</span> ${item.id}</td><td class="px-4 py-3">${item.title}</td><td class="px-4 py-3 text-xs text-gray-500">${item.summary}</td><td class="px-4 py-3 text-center">${item.published}</td></tr>`; 
                 });
             } else if (type === 'patent') {
                 mTitle.innerHTML = `<i data-lucide="building-2" class="w-5 h-5 text-blue-600"></i> {{ ui.TH_PAT_MODAL }}`;
+                mDownload.onclick = () => downloadCSV('patent', false);
+                mDownload.classList.remove('hidden');
+                mDownload.classList.add('flex');
                 mThead.innerHTML = `<tr><th class="px-4 py-3">{{ ui.TH_PUB }}</th><th class="px-4 py-3">{{ ui.TH_INV }}</th><th class="px-4 py-3">{{ ui.TH_APP }}</th><th class="px-4 py-3 w-2/5">{{ ui.TH_SUMMARY }}</th></tr>`;
                 pipelineOutputJson.patent_list.forEach((item, idx) => { 
                     mTbody.innerHTML += `<tr class="border-b"><td class="px-4 py-3 font-medium text-indigo-600"><span class="inline-block w-5 h-5 text-center leading-5 text-xs text-white bg-indigo-400 rounded-full mr-1">${idx+1}</span> ${item.pub_num}</td><td class="px-4 py-3 text-xs font-medium">${item.title}</td><td class="px-4 py-3 text-xs">${item.applicant}</td><td class="px-4 py-3 text-xs text-gray-500">${item.summary}</td></tr>`; 
@@ -290,22 +302,24 @@
         }
         function closeModal() { modal.classList.add('hidden'); }
 
-        function downloadCSV(type) {
+        function downloadCSV(type, isFull = true) {
             let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+            const data = isFull ? fullCsvData : pipelineOutputJson;
             if (type === 'academic') {
                 csvContent += "{{ ui.CSV_ACAD_HEAD }}";
-                fullCsvData.academic_list.forEach(item => { 
+                data.academic_list.forEach(item => {
                     let summary = item.summary ? item.summary.replace(/"/g, '""') : '';
                     csvContent += `"${item.id}","${item.title}","${item.author}","${summary}","${item.published}"\n`; 
                 });
             } else if (type === 'patent') {
                 csvContent += "{{ ui.CSV_PAT_HEAD }}";
-                fullCsvData.patent_list.forEach(item => { 
+                data.patent_list.forEach(item => {
                     let summary = item.summary ? item.summary.replace(/"/g, '""') : '';
                     csvContent += `"${item.pub_num}","${item.title}","${item.applicant}","${summary}","${item.status}"\n`; 
                 });
             }
-            const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", type + "_list_full.csv");
+            const suffix = isFull ? "population" : "top";
+            const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", type + "_list_" + suffix + ".csv");
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
         }
 
