@@ -6,6 +6,7 @@ import base64
 import requests
 import warnings
 import datetime
+import time
 import urllib.parse
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -156,9 +157,40 @@ def extract_text_deeply(node: Any) -> str:
 
 def fetch_arxiv_documents(query: str, max_results: int) -> Tuple[List[Document], List[dict]]:
     print(f"[API] Arxiv へリクエスト... Query: '{query}'")
-    url = f"http://export.arxiv.org/api/query?search_query=all:{query}&start=0&max_results={max_results}"
+    url = "https://export.arxiv.org/api/query"
+    params = {
+        "search_query": f"all:{urllib.parse.unquote_plus(query).strip()}",
+        "start": 0,
+        "max_results": max_results,
+    }
+    headers = {
+        "User-Agent": (
+            "ip-dashboard/1.0 "
+            f"(mailto:{os.getenv('ARXIV_CONTACT_EMAIL', 'admin@example.com')})"
+        )
+    }
     try:
-        response = requests.get(url, timeout=15)
+        response = None
+        for attempt in range(3):
+            response = requests.get(url, params=params, headers=headers, timeout=15)
+            if response.status_code != 429 or attempt == 2:
+                break
+
+            retry_after = response.headers.get("Retry-After", "3")
+            try:
+                wait_seconds = max(1, min(int(retry_after), 30))
+            except ValueError:
+                wait_seconds = 3
+            print(
+                f"[API] Arxiv rate limit (429). "
+                f"{wait_seconds}秒後に再試行します ({attempt + 1}/2)",
+                flush=True,
+            )
+            time.sleep(wait_seconds)
+
+        if response is None:
+            raise RuntimeError("Arxiv APIからレスポンスを取得できませんでした")
+        response.raise_for_status()
         root = ET.fromstring(response.content)
         docs: List[Document] = []
         csv_data: List[dict] = []
@@ -189,7 +221,8 @@ def fetch_arxiv_documents(query: str, max_results: int) -> Tuple[List[Document],
             csv_data.append(metadata)
         return docs, csv_data
     except Exception as e:
-        print(f"Arxiv APIエラー: {e}")
+        status_code = getattr(response, "status_code", "N/A")
+        print(f"Arxiv APIエラー (status={status_code}): {e}", flush=True)
         return [], []
 
 def _extract_epo_data(doc: dict) -> dict:
@@ -581,15 +614,15 @@ UI_DICT = {
         "INDICATOR_LABEL": "主要インジケーター",
         "HEAT_LABEL": "学術熱度", "WHITESPACE_LABEL": "特許ホワイトスペース度", "FTO_LABEL": "FTOリスク",
         "ACADEMIC_TITLE": "Academic Agent (学術)", "ACADEMIC_MAT": "▼ 注目キーワード", "ACADEMIC_TREND": "▼ 論文発表トレンド",
-        "BTN_ACAD_LIST": "論文リスト表示", "BTN_ACAD_DL": "リストDL(全件)",
+        "BTN_ACAD_LIST": "関連論文リスト (Top N)", "BTN_ACAD_DL": "母集団DL", "BTN_TOP_DL": "ダウンロード",
         "PATENT_TITLE": "Patent Agent (特許)", "PATENT_DENS": "▼ ランドスケープ密度",
         "RO_LABEL": "レッドオーシャン", "WS_LABEL": "ホワイトスペース", "BTN_REASON": "根拠を見る",
-        "PATENT_PLAYERS": "▼ 注目特許出願人", "BTN_PAT_LIST": "特許リスト表示", "BTN_PAT_DL": "リストDL(全件)",
+        "PATENT_PLAYERS": "▼ 注目特許出願人", "BTN_PAT_LIST": "関連特許リスト (Top N)", "BTN_PAT_DL": "母集団DL",
         "MARKET_TITLE": "Market Agent (市場動向)", "MARKET_OVERVIEW": "▼ 市場概況",
         "TH_MKT_PLAYER": "メインプレイヤー", "TH_MKT_SHARE": "推定シェア", "TH_MKT_REV": "売上規模", "TH_MKT_STR": "強み",
-        "ACTION_TITLE": "Action Plans", "BTN_ACTION": "一括で指示", "BTN_SAVE_HTML": "ダッシュボードを保存(HTML)",
+        "ACTION_TITLE": "Action Plans", "BTN_ACTION": "各部署へ指示", "BTN_SAVE_HTML": "ダッシュボードを保存(HTML)",
         "MODAL_CLOSE": "閉じる",
-        "TH_ACAD_MODAL": "抽出論文リスト (Top)", "TH_PAT_MODAL": "関連特許リスト (Top)",
+        "TH_ACAD_MODAL": "関連論文リスト (Top N)", "TH_PAT_MODAL": "関連特許リスト (Top N)",
         "TH_ID": "ID", "TH_TITLE": "タイトル", "TH_SUMMARY": "概要", "TH_CIT": "発行年", "TH_PUB": "特許番号", "TH_INV": "発明の名称", "TH_APP": "出願人", "TH_REP": "代表特許",
         "JS_ALERT": "指示を送信しました。", "CSV_ACAD_HEAD": "ID,タイトル,著者,要約,発行年\\n", "CSV_PAT_HEAD": "特許番号,名称,出願人,要約,状況\\n",
         "DISCLAIMER_TEXT": "<strong>免責事項:</strong> 本ダッシュボードはAI（Gemini 3.1 Flash Lite）による初期仮説の提供を目的としています。最終的なFTO評価・出願判断は法務・知財部門の専門家と実施してください。"
@@ -602,15 +635,15 @@ UI_DICT = {
         "INDICATOR_LABEL": "Key Indicators",
         "HEAT_LABEL": "Academic Heat", "WHITESPACE_LABEL": "Patent Whitespace", "FTO_LABEL": "FTO Risk",
         "ACADEMIC_TITLE": "Academic Agent", "ACADEMIC_MAT": "▼ Key Keywords", "ACADEMIC_TREND": "▼ Publication Trends",
-        "BTN_ACAD_LIST": "Show Paper List", "BTN_ACAD_DL": "Download Papers (All)",
+        "BTN_ACAD_LIST": "Related Paper List (Top N)", "BTN_ACAD_DL": "Download Papers (All)",
         "PATENT_TITLE": "Patent Agent", "PATENT_DENS": "▼ Landscape Density",
         "RO_LABEL": "Red Ocean", "WS_LABEL": "White Space", "BTN_REASON": "View Evidence",
-        "PATENT_PLAYERS": "▼ Key Patent Applicants", "BTN_PAT_LIST": "Show Patent List", "BTN_PAT_DL": "Download Patents (All)",
+        "PATENT_PLAYERS": "▼ Key Patent Applicants", "BTN_PAT_LIST": "Related Patent List (Top N)", "BTN_PAT_DL": "Download Patents (All)",
         "MARKET_TITLE": "Market Agent", "MARKET_OVERVIEW": "▼ Market Overview",
         "TH_MKT_PLAYER": "Key Player", "TH_MKT_SHARE": "Est. Share", "TH_MKT_REV": "Revenue", "TH_MKT_STR": "Strengths",
-        "ACTION_TITLE": "Action Plans", "BTN_ACTION": "Execute All", "BTN_SAVE_HTML": "Save Dashboard (HTML)",
+        "ACTION_TITLE": "Action Plans", "BTN_ACTION": "Send to Departments", "BTN_SAVE_HTML": "Save Dashboard (HTML)",
         "MODAL_CLOSE": "Close",
-        "TH_ACAD_MODAL": "Extracted Papers (Top)", "TH_PAT_MODAL": "Related Patents (Top)",
+        "TH_ACAD_MODAL": "Related Paper List (Top N)", "TH_PAT_MODAL": "Related Patent List (Top N)",
         "TH_ID": "ID", "TH_TITLE": "Title", "TH_SUMMARY": "Summary", "TH_CIT": "Year", "TH_PUB": "Patent No.", "TH_INV": "Invention Title", "TH_APP": "Applicant", "TH_REP": "Representative",
         "JS_ALERT": "Instruction sent.", "CSV_ACAD_HEAD": "ID,Title,Author,Summary,Year\\n", "CSV_PAT_HEAD": "PatentNo,Title,Applicant,Summary,Status\\n",
         "DISCLAIMER_TEXT": "<strong>Disclaimer:</strong> This dashboard is generated by AI (Gemini 3.1 Flash Lite) to provide initial hypotheses. Please consult legal/IP professionals for final FTO evaluations and filing decisions."

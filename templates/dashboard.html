@@ -76,7 +76,7 @@
                     <div class="h-32 w-full mb-4"><canvas id="trendChart"></canvas></div>
                 </div>
                 <div class="flex gap-2 border-t pt-4 mt-auto">
-                    <button onclick="openModal('academic')" class="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 text-sm font-medium rounded-lg transition-colors"><i data-lucide="list" class="w-4 h-4"></i> {{ ui.BTN_ACAD_LIST }}</button>
+                    <button id="academic-list-button" onclick="openModal('academic')" class="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 text-sm font-medium rounded-lg transition-colors"><i data-lucide="list" class="w-4 h-4"></i> {{ ui.BTN_ACAD_LIST }}</button>
                     <button onclick="downloadCSV('academic')" class="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors"><i data-lucide="download" class="w-4 h-4"></i> {{ ui.BTN_ACAD_DL }}</button>
                 </div>
             </div>
@@ -105,7 +105,7 @@
                     <ul class="space-y-2 mb-4" id="players-container"></ul>
                 </div>
                 <div class="flex gap-2 border-t pt-4 mt-auto">
-                    <button onclick="openModal('patent')" class="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-white border border-blue-200 hover:bg-blue-50 text-blue-700 text-sm font-medium rounded-lg transition-colors"><i data-lucide="list" class="w-4 h-4"></i> {{ ui.BTN_PAT_LIST }}</button>
+                    <button id="patent-list-button" onclick="openModal('patent')" class="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-white border border-blue-200 hover:bg-blue-50 text-blue-700 text-sm font-medium rounded-lg transition-colors"><i data-lucide="list" class="w-4 h-4"></i> {{ ui.BTN_PAT_LIST }}</button>
                     <button onclick="downloadCSV('patent')" class="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors"><i data-lucide="download" class="w-4 h-4"></i> {{ ui.BTN_PAT_DL }}</button>
                 </div>
             </div>
@@ -135,9 +135,12 @@
         </div>
 
         <div class="glass-panel rounded-xl shadow-sm p-6">
-            <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center justify-between gap-3 mb-4">
                 <div class="flex items-center gap-2 text-indigo-700"><i data-lucide="zap" class="w-6 h-6"></i><h2 class="text-lg font-bold">{{ ui.ACTION_TITLE }}</h2></div>
-                <button class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm" onclick="alert('{{ ui.JS_ALERT }}')">{{ ui.BTN_ACTION }}</button>
+                <div class="flex items-center gap-2">
+                    <button id="select-all-action-plans" type="button" class="px-3 py-2 bg-white border border-indigo-200 hover:bg-indigo-50 text-indigo-700 text-sm font-medium rounded-lg shadow-sm transition-colors">全て選択</button>
+                    <button id="send-action-plans" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm">各部署へ指示</button>
+                </div>
             </div>
             <div class="space-y-3" id="action-plans-container"></div>
         </div>
@@ -155,6 +158,9 @@
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col modal-enter">
             <div class="flex justify-between items-center p-5 border-b">
                 <h3 id="modal-title" class="text-lg font-bold text-gray-900 flex items-center gap-2"></h3>
+                <button id="modal-download" onclick="downloadCSV('academic', false)" class="hidden items-center gap-1 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-medium rounded-lg transition-colors">
+                    <i data-lucide="download" class="w-4 h-4"></i> {{ ui.BTN_TOP_DL }}
+                </button>
                 <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 transition-colors"><i data-lucide="x" class="w-6 h-6"></i></button>
             </div>
             <div id="modal-description" class="px-5 py-4 bg-indigo-50/50 border-b border-indigo-100 text-sm text-gray-800 leading-relaxed hidden"></div>
@@ -184,8 +190,26 @@
         const pipelineOutputJson = JSON.parse(document.getElementById('pipeline-data').textContent);
         const fullCsvData = JSON.parse(document.getElementById('csv-data').textContent);
 
+        function updateTopNListLabels() {
+            const academicCount = Number(pipelineOutputJson.academic_list?.length || 0);
+            const patentCount = Number(pipelineOutputJson.patent_list?.length || 0);
+            const academicBtn = document.getElementById('academic-list-button');
+            const patentBtn = document.getElementById('patent-list-button');
+
+            if (academicBtn) {
+                academicBtn.innerHTML = `<i data-lucide="list" class="w-4 h-4"></i> 関連論文リスト (Top ${academicCount})`;
+            }
+            if (patentBtn) {
+                patentBtn.innerHTML = `<i data-lucide="list" class="w-4 h-4"></i> 関連特許リスト (Top ${patentCount})`;
+            }
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
+            updateTopNListLabels();
             document.getElementById('analysis-date').textContent = new Date().toLocaleDateString('ja-JP');
             document.getElementById('overall-judgment').textContent = pipelineOutputJson.overall_judgment;
             document.getElementById('executive-summary').textContent = pipelineOutputJson.executive_summary;
@@ -240,6 +264,28 @@
                 actionContainer.appendChild(planEl);
             });
 
+            const selectAllButton = document.getElementById('select-all-action-plans');
+            if (selectAllButton) {
+                selectAllButton.onclick = () => {
+                    const allCheckboxes = actionContainer.querySelectorAll('input[type="checkbox"]');
+                    const shouldCheck = !Array.from(allCheckboxes).every(cb => cb.checked);
+                    allCheckboxes.forEach(cb => {
+                        cb.checked = shouldCheck;
+                    });
+                };
+            }
+
+            const sendActionPlansButton = document.getElementById('send-action-plans');
+            if (sendActionPlansButton) {
+                sendActionPlansButton.onclick = () => {
+                    const checkedBoxes = actionContainer.querySelectorAll('input[type="checkbox"]:checked');
+                    if (checkedBoxes.length === 0) {
+                        return;
+                    }
+                    alert('{{ ui.JS_ALERT }}');
+                };
+            }
+
             // 既存のチャートがあれば破棄（重複描画防止）
             if (window.myTrendChart) {
                 window.myTrendChart.destroy();
@@ -262,16 +308,27 @@
             const mDesc = document.getElementById('modal-description');
             const mThead = document.getElementById('modal-thead');
             const mTbody = document.getElementById('modal-tbody');
+            const mDownload = document.getElementById('modal-download');
             mThead.innerHTML = ''; mTbody.innerHTML = ''; mDesc.classList.add('hidden'); mDesc.innerHTML = '';
+            mDownload.classList.add('hidden');
+            mDownload.classList.remove('flex');
             
             if (type === 'academic') {
-                mTitle.innerHTML = `<i data-lucide="graduation-cap" class="w-5 h-5 text-rose-600"></i> {{ ui.TH_ACAD_MODAL }}`;
+                const academicCount = Number(pipelineOutputJson.academic_list?.length || 0);
+                mTitle.innerHTML = `<i data-lucide="graduation-cap" class="w-5 h-5 text-rose-600"></i> 関連論文リスト (Top ${academicCount})`;
+                mDownload.onclick = () => downloadCSV('academic', false);
+                mDownload.classList.remove('hidden');
+                mDownload.classList.add('flex');
                 mThead.innerHTML = `<tr><th class="px-4 py-3">{{ ui.TH_ID }}</th><th class="px-4 py-3">{{ ui.TH_TITLE }}</th><th class="px-4 py-3 w-1/2">{{ ui.TH_SUMMARY }}</th><th class="px-4 py-3 text-center">{{ ui.TH_CIT }}</th></tr>`;
                 pipelineOutputJson.academic_list.forEach((item, idx) => { 
                     mTbody.innerHTML += `<tr class="border-b"><td class="px-4 py-3 font-medium text-indigo-600"><span class="inline-block w-5 h-5 text-center leading-5 text-xs text-white bg-indigo-400 rounded-full mr-1">${idx+1}</span> ${item.id}</td><td class="px-4 py-3">${item.title}</td><td class="px-4 py-3 text-xs text-gray-500">${item.summary}</td><td class="px-4 py-3 text-center">${item.published}</td></tr>`; 
                 });
             } else if (type === 'patent') {
-                mTitle.innerHTML = `<i data-lucide="building-2" class="w-5 h-5 text-blue-600"></i> {{ ui.TH_PAT_MODAL }}`;
+                const patentCount = Number(pipelineOutputJson.patent_list?.length || 0);
+                mTitle.innerHTML = `<i data-lucide="building-2" class="w-5 h-5 text-blue-600"></i> 関連特許リスト (Top ${patentCount})`;
+                mDownload.onclick = () => downloadCSV('patent', false);
+                mDownload.classList.remove('hidden');
+                mDownload.classList.add('flex');
                 mThead.innerHTML = `<tr><th class="px-4 py-3">{{ ui.TH_PUB }}</th><th class="px-4 py-3">{{ ui.TH_INV }}</th><th class="px-4 py-3">{{ ui.TH_APP }}</th><th class="px-4 py-3 w-2/5">{{ ui.TH_SUMMARY }}</th></tr>`;
                 pipelineOutputJson.patent_list.forEach((item, idx) => { 
                     mTbody.innerHTML += `<tr class="border-b"><td class="px-4 py-3 font-medium text-indigo-600"><span class="inline-block w-5 h-5 text-center leading-5 text-xs text-white bg-indigo-400 rounded-full mr-1">${idx+1}</span> ${item.pub_num}</td><td class="px-4 py-3 text-xs font-medium">${item.title}</td><td class="px-4 py-3 text-xs">${item.applicant}</td><td class="px-4 py-3 text-xs text-gray-500">${item.summary}</td></tr>`; 
@@ -290,22 +347,24 @@
         }
         function closeModal() { modal.classList.add('hidden'); }
 
-        function downloadCSV(type) {
+        function downloadCSV(type, isFull = true) {
             let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+            const data = isFull ? fullCsvData : pipelineOutputJson;
             if (type === 'academic') {
                 csvContent += "{{ ui.CSV_ACAD_HEAD }}";
-                fullCsvData.academic_list.forEach(item => { 
+                data.academic_list.forEach(item => {
                     let summary = item.summary ? item.summary.replace(/"/g, '""') : '';
                     csvContent += `"${item.id}","${item.title}","${item.author}","${summary}","${item.published}"\n`; 
                 });
             } else if (type === 'patent') {
                 csvContent += "{{ ui.CSV_PAT_HEAD }}";
-                fullCsvData.patent_list.forEach(item => { 
+                data.patent_list.forEach(item => {
                     let summary = item.summary ? item.summary.replace(/"/g, '""') : '';
                     csvContent += `"${item.pub_num}","${item.title}","${item.applicant}","${summary}","${item.status}"\n`; 
                 });
             }
-            const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", type + "_list_full.csv");
+            const suffix = isFull ? "population" : "top";
+            const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", type + "_list_" + suffix + ".csv");
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
         }
 
