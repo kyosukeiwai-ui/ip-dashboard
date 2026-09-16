@@ -139,7 +139,7 @@
                 <div class="flex items-center gap-2 text-indigo-700"><i data-lucide="zap" class="w-6 h-6"></i><h2 class="text-lg font-bold">{{ ui.ACTION_TITLE }}</h2></div>
                 <div class="flex items-center gap-2">
                     <button id="select-all-action-plans" type="button" class="px-3 py-2 bg-white border border-indigo-200 hover:bg-indigo-50 text-indigo-700 text-sm font-medium rounded-lg shadow-sm transition-colors">全て選択</button>
-                    <button class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm" onclick="alert('{{ ui.JS_ALERT }}')">各部署へ指示</button>
+                    <button id="send-action-plans" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-sm">各部署へ指示</button>
                 </div>
             </div>
             <div class="space-y-3" id="action-plans-container"></div>
@@ -272,6 +272,17 @@
                     allCheckboxes.forEach(cb => {
                         cb.checked = shouldCheck;
                     });
+                };
+            }
+
+            const sendActionPlansButton = document.getElementById('send-action-plans');
+            if (sendActionPlansButton) {
+                sendActionPlansButton.onclick = () => {
+                    const checkedBoxes = actionContainer.querySelectorAll('input[type="checkbox"]:checked');
+                    if (checkedBoxes.length === 0) {
+                        return;
+                    }
+                    alert('{{ ui.JS_ALERT }}');
                 };
             }
 
